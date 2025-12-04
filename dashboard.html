@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>E-Government Portal </title>
+<style>
+  :root{--blue:#2a6fdb;--muted:#6b7280}
+  body{font-family:Inter,system-ui,Arial;background:#f4f6f8;margin:0;color:#111}
+  .wrap{max-width:980px;margin:28px auto;padding:18px;background:#fff;border-radius:8px;box-shadow:0 6px 24px rgba(18,38,63,.06)}
+  header{display:flex;justify-content:space-between;align-items:center}
+  header h1{font-size:20px;margin:0}
+  nav a{margin-left:12px;text-decoration:none;color:var(--blue)}
+  .hero{background:#eef5ff;padding:16px;border-radius:6px;margin:16px 0}
+  .grid{display:flex;gap:12px;flex-wrap:wrap}
+  .card{background:#fff;border:1px solid #e6e9ee;padding:12px;border-radius:6px;flex:1 1 30%}
+  label{display:block;margin:8px 0 4px;font-weight:600}
+  input,select,textarea{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px}
+  button.btn{background:var(--blue);color:#fff;border:0;padding:8px 12px;border-radius:6px;cursor:pointer}
+  .small{font-size:13px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{padding:10px;border-bottom:1px solid #efefef;text-align:left}
+  .badge{padding:6px 8px;border-radius:6px;color:#fff;font-weight:600}
+  .pending{background:#f0ad4e}.under{background:#5bc0de}.approved{background:#5cb85c}.rejected{background:#d9534f}
+  .hidden{display:none}
+  .flex{display:flex;gap:10px;align-items:center}
+  .notice{background:#e6ffed;border-left:4px solid #5cb85c;padding:10px;border-radius:6px;margin:10px 0}
+  footer{margin-top:18px;color:var(--muted);font-size:13px}
+  input[type=file]{padding:6px}
+  @media (max-width:720px){ .card{flex:1 1 100%} header{flex-direction:column;align-items:flex-start;gap:8px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>E-Government Service Portal</h1>
+      <div class="small">Submit forms · Upload docs · Track applications</div>
+    </div>
+    <nav id="nav">
+      <!-- nav links injected -->
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- main content injected -->
+  </main>
+
+  <footer>
+    © <span id="year"></span> E-Government Service Portal demo (data stored in your browser)
+  </footer>
+</div>
+
+<script>
+/* -------------------------
+E-Government portal
+Frontend-only using localStorage
+------------------------- */
+
+const STATE_KEY = 'egov_portal_v1';
+
+// default data seed
+const seed = {
+  users: [
+    // admin account (password Admin@123)
+    { id: 1, fullname: 'Administrator', email: 'admin@egov.test', password: 'Admin@123', role: 'admin', created_at: new Date().toISOString() }
+  ],
+  services: [
+    { id: 1, title: 'LC Letter', description: 'Local council introduction letter', active: true },
+    { id: 2, title: 'Business Permit', description: 'Application for business permit', active: true },
+    { id: 3, title: 'Civil Status', description: 'Birth / Marriage / Death enquiries', active: true }
+  ],
+  applications: [],
+  documents: [],
+  notifications: []
+};
+
+// utilities
+const uid = ()=>Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const now = ()=>new Date().toISOString();
+const el = id => document.getElementById(id);
+const getState = ()=> JSON.parse(localStorage.getItem(STATE_KEY) || JSON.stringify(seed));
+const saveState = s => localStorage.setItem(STATE_KEY, JSON.stringify(s));
+const loggedKey = 'egov_logged_user';
+
+// init
+document.getElementById('year').textContent = new Date().getFullYear();
+if(!localStorage.getItem(STATE_KEY)) saveState(seed);
+renderNav();
+showHome();
+
+// simple session
+function currentUser(){ return JSON.parse(sessionStorage.getItem(loggedKey) || 'null'); }
+function setCurrentUser(u){ sessionStorage.setItem(loggedKey, JSON.stringify(u)); renderNav(); showDashboard(); }
+function clearCurrentUser(){ sessionStorage.removeItem(loggedKey); renderNav(); showHome(); }
+
+// nav
+function renderNav(){
+  const u = currentUser();
+  const nav = document.getElementById('nav');
+  nav.innerHTML = '';
+  if(u){
+    const a = tag('a', 'Dashboard', ()=>showDashboard());
+    const b = tag('a', 'Apply', ()=>showApply());
+    const c = tag('a', 'Track', ()=>showTrack());
+    const d = tag('a', 'Logout', ()=>{ clearCurrentUser(); });
+    nav.appendChild(a); nav.appendChild(b); nav.appendChild(c); nav.appendChild(d);
+    if(u.role==='admin'){ const ad = tag('a','Admin',()=>showAdmin()); nav.appendChild(ad); }
+  } else {
+    nav.appendChild(tag('a','Register',()=>showRegister()));
+    nav.appendChild(tag('a','Login',()=>showLogin()));
+    nav.appendChild(tag('a','Track',()=>showTrack()));
+    nav.appendChild(tag('a','Admin Login',()=>showAdminLogin()));
+  }
+}
+
+// small helper to create link-like element
+function tag(t, txt, onClick){
+  const a = document.createElement('a'); a.href='#'; a.textContent=txt;
+  a.onclick = e=>{ e.preventDefault(); onClick(); return false; };
+  return a;
+}
+
+/* -------------------------
+Views (render into #main)
+------------------------- */
+
+function showHome(){
+  const s = getState();
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <section class="hero">
+      <h2>Access Government Services Online</h2>
+      <p class="small">Submit requests, upload documents and track progress — all from your browser.</p>
+      <div style="margin-top:10px">${tagEl('button','Apply Now',()=>showApply(),'btn')}</div>
+    </section>
+
+    <h3>Available Services</h3>
+    <div class="grid" id="services_grid"></div>
+  `;
+  const grid = document.getElementById('services_grid');
+  s.services.filter(x=>x.active).forEach(sv=>{
+    const c = document.createElement('div'); c.className='card';
+    c.innerHTML = `<h4>${escapeHtml(sv.title)}</h4><p class="small">${escapeHtml(sv.description)}</p>`;
+    const a = document.createElement('a'); a.href='#'; a.textContent='Apply'; a.className='btn';
+    a.onclick = e=>{ e.preventDefault(); showApply(sv.id); };
+    c.appendChild(a); grid.appendChild(c);
+  });
+}
+
+function showRegister(){
+  const main = el('main');
+  main.innerHTML = `
+    <h3>Register (Citizen)</h3>
+    <form id="reg_form">
+      <label>Full name</label>
+      <input name="fullname" required>
+      <label>Email</label>
+      <input name="email" type="email" required>
+      <label>Password</label>
+      <input name="password" type="password" required>
+      <div style="margin-top:10px"><button class="btn" type="submit">Register</button> <span class="small">Already registered? <a href="#" id="link_login">Login</a></span></div>
+    </form>
+    <div id="reg_msg"></div>
+  `;
+  el('link_login').onclick = e=>{ e.preventDefault(); showLogin(); };
+  document.getElementById('reg_form').onsubmit = function(ev){
+    ev.preventDefault();
+    const f = new FormData(ev.target);
+    const fullname = f.get('fullname').trim();
+    const email = f.get('email').trim().toLowerCase();
+    const password = f.get('password');
+    const st = getState();
+    if(st.users.some(u=>u.email===email)){ el('reg_msg').innerHTML = `<p style="color:red">Email already registered.</p>`; return; }
+    const id = (st.users.reduce((m,u)=>Math.max(m,u.id),0) + 1);
+    st.users.push({ id, fullname, email, password, role:'citizen', created_at: now() });
+    saveState(st);
+    el('reg_msg').innerHTML = `<div class="notice">Registration successful. Please login.</div>`;
+    setTimeout(showLogin,800);
+  };
+}
+
+function showLogin(){
+  const main = el('main');
+  main.innerHTML = `
+    <h3>Login</h3>
+    <form id="login_form">
+      <label>Email</label><input name="email" type="email" required>
+      <label>Password</label><input name="password" type="password" required>
+      <div style="margin-top:10px"><button class="btn">Login</button> <span class="small">No account? <a href="#" id="link_reg">Register</a></span></div>
+    </form>
+    <div id="login_msg"></div>
+  `;
+  el('link_reg').onclick = e=>{ e.preventDefault(); showRegister(); };
+  document.getElementById('login_form').onsubmit = function(ev){
+    ev.preventDefault();
+    const fm = new FormData(ev.target); const email = fm.get('email').toLowerCase(), pass = fm.get('password');
+    const st = getState();
+    const u = st.users.find(x=>x.email===email && x.role!=='admin');
+    if(!u || u.password !== pass){ el('login_msg').innerHTML = `<p style="color:red">Invalid credentials.</p>`; return; }
+    sessionStorage.setItem(loggedKey, JSON.stringify(u));
+    renderNav(); showDashboard();
+  };
+}
+
+// admin login (separate view)
+function showAdminLogin(){
+  const main = el('main');
+  main.innerHTML = `
+    <h3>Admin Login</h3>
+    <form id="admin_login">
+      <label>Email</label><input name="email" required>
+      <label>Password</label><input name="password" type="password" required>
+      <div style="margin-top:10px"><button class="btn">Login</button></div>
+    </form>
+    <div id="admin_msg"></div>
+  `;
+  document.getElementById('admin_login').onsubmit = function(ev){
+    ev.preventDefault();
+    const fm = new FormData(ev.target); const email = fm.get('email').toLowerCase(), pass = fm.get('password');
+    const st = getState();
+    const u = st.users.find(x=>x.email===email && x.role==='admin');
+    if(!u || u.password !== pass){ el('admin_msg').innerHTML = `<p style="color:red">Invalid admin credentials.</p>`; return; }
+    sessionStorage.setItem(loggedKey, JSON.stringify(u));
+    renderNav(); showAdmin();
+  };
+}
+
+// apply form
+function showApply(prefServiceId){
+  const user = currentUser();
+  const st = getState();
+  const main = el('main');
+  main.innerHTML = `
+    <h3>Apply for Service</h3>
+    ${ user ? '' : '<div class="notice">Please register or login to apply. You may still view and track publicly.</div>'}
+    <form id="apply_form" ${ user ? '' : 'class="hidden"' } enctype="multipart/form-data">
+      <label>Service</label>
+      <select name="service_id" required>
+        ${ st.services.filter(s=>s.active).map(s => `<option value="${s.id}" ${s.id===prefServiceId? 'selected':''}>${escapeHtml(s.title)}</option>`).join('') }
+      </select>
+      <label>Details / Purpose</label>
+      <textarea name="details" required></textarea>
+      <label>Upload Document (optional)</label>
+      <input type="file" name="document" accept=".pdf,.jpg,.png">
+      <div style="margin-top:10px"><button class="btn">Submit Application</button></div>
+    </form>
+    <div id="apply_msg"></div>
+  `;
+  if(!user) return;
+  document.getElementById('apply_form').onsubmit = async function(ev){
+    ev.preventDefault();
+    const f = new FormData(ev.target);
+    const service_id = parseInt(f.get('service_id'),10);
+    const details = f.get('details').trim();
+    // generate tracking code
+    const tracking = 'GOV-' + new Date().getFullYear() + '-' + uid().slice(0,6).toUpperCase();
+    const stt = getState();
+    const aid = (stt.applications.reduce((m,a)=>Math.max(m,a.id||0),0) + 1);
+    const uid_now = currentUser().id;
+    const app = { id: aid, user_id: uid_now, service_id, tracking_code:tracking, details, status:'Submitted', admin_comment:'', created_at: now(), updated_at: null };
+    stt.applications.push(app);
+    // handle file (store as dataURL)
+    const file = f.get('document');
+    if(file && file.size>0){
+      const dataURL = await toDataURL(file);
+      const docId = (stt.documents.reduce((m,d)=>Math.max(m,d.id||0),0) + 1);
+      stt.documents.push({ id:docId, application_id:aid, filename: file.name, data:dataURL, uploaded_at: now() });
+    }
+    // notification
+    stt.notifications.push({ id: (stt.notifications.reduce((m,n)=>Math.max(m,n.id||0),0)+1), user_id: uid_now, message: `Application submitted: ${tracking}`, is_read:0, created_at: now() });
+    saveState(stt);
+    el('apply_msg').innerHTML = `<div class="notice">Application submitted. Tracking code: <strong>${tracking}</strong></div>`;
+    setTimeout(()=>showDashboard(),900);
+  };
+}
+
+// dashboard (for logged user)
+function showDashboard(){
+  const user = currentUser();
+  if(!user) { showLogin(); return; }
+  const st = getState();
+  const apps = st.applications.filter(a=>a.user_id === user.id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
+  const main = el('main');
+  main.innerHTML = `
+    <h3>My Applications</h3>
+    <div class="small">Logged in as ${escapeHtml(user.fullname)} (${escapeHtml(user.email)})</div>
+    <table>
+      <tr><th>Tracking</th><th>Service</th><th>Details</th><th>Status</th><th>Applied</th></tr>
+      ${ apps.map(a => {
+        const sv = st.services.find(s=>s.id===a.service_id) || {title:'-'};
+        return `<tr>
+          <td>${a.tracking_code}</td>
+          <td>${escapeHtml(sv.title)}</td>
+          <td>${escapeHtml(a.details).slice(0,80)}</td>
+          <td><span class="badge ${statusClass(a.status)}">${a.status}</span></td>
+          <td>${new Date(a.created_at).toLocaleString()}</td>
+        </tr>`;
+      }).join('') }
+    </table>
+    <div style="margin-top:14px"><button class="btn" onclick="showApply()">Apply for another service</button> <button class="btn" style="background:#6b7280" onclick="showTrack()">Track by Code</button></div>
+  `;
+}
+
+// public tracking view
+function showTrack(){
+  const main = el('main');
+  main.innerHTML = `
+    <h3>Track Application</h3>
+    <form id="track_form">
+      <label>Enter Tracking Code</label>
+      <input name="tracking" required>
+      <div style="margin-top:10px"><button class="btn">Track</button></div>
+    </form>
+    <div id="track_result"></div>
+  `;
+  document.getElementById('track_form').onsubmit = function(ev){
+    ev.preventDefault();
+    const fm = new FormData(ev.target); const code = fm.get('tracking').trim();
+    const st = getState();
+    const app = st.applications.find(a=>a.tracking_code===code);
+    const out = el('track_result');
+    if(!app){ out.innerHTML = `<p style="color:red">Tracking code not found.</p>`; return; }
+    const sv = st.services.find(s=>s.id===app.service_id) || {};
+    const user = st.users.find(u=>u.id===app.user_id) || {};
+    const docs = st.documents.filter(d=>d.application_id===app.id);
+    out.innerHTML = `<h4>Application: ${app.tracking_code}</h4>
+      <p><b>Service:</b> ${escapeHtml(sv.title||'-')}</p>
+      <p><b>Applicant:</b> ${escapeHtml(user.fullname||'-')}</p>
+      <p><b>Status:</b> <span class="badge ${statusClass(app.status)}">${app.status}</span></p>
+      <p><b>Details:</b><br>${escapeHtml(app.details).replaceAll('\\n','<br>')}</p>
+      <p><b>Admin Comment:</b><br>${escapeHtml(app.admin_comment||'—')}</p>
+      <h4>Documents</h4>
+      ${ docs.length ? docs.map(d=>`<div><a href="#" onclick="openDocument(${d.id});return false;">${escapeHtml(d.filename)}</a></div>`).join('') : '<div class="small">No documents uploaded</div>' }
+    `;
+  };
+}
+
+// admin dashboard & actions
+function showAdmin(){
+  const user = currentUser();
+  if(!user || user.role!=='admin'){ showAdminLogin(); return; }
+  const st = getState();
+  const apps = st.applications.sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
+  const main = el('main');
+  main.innerHTML = `
+    <h3>Admin Dashboard</h3>
+    <div class="small">Logged in as Admin (${escapeHtml(user.email)})</div>
+    <table>
+      <tr><th>Tracking</th><th>Service</th><th>Applicant</th><th>Status</th><th>Action</th></tr>
+      ${ apps.map(a => {
+        const sv = st.services.find(s=>s.id===a.service_id) || {};
+        const u = st.users.find(x=>x.id===a.user_id) || {};
+        return `<tr>
+          <td>${a.tracking_code}</td>
+          <td>${escapeHtml(sv.title||'-')}</td>
+          <td>${escapeHtml(u.fullname||'-')}</td>
+          <td>${a.status}</td>
+          <td><button class="btn" onclick="viewApplication(${a.id})">View</button></td>
+        </tr>`;
+      }).join('') }
+    </table>
+  `;
+}
+
+// view / update one application as admin
+function viewApplication(appId){
+  const st = getState();
+  const a = st.applications.find(x=>x.id===appId);
+  if(!a) return showAdmin();
+  const sv = st.services.find(s=>s.id===a.service_id) || {};
+  const u = st.users.find(x=>x.id===a.user_id) || {};
+  const docs = st.documents.filter(d=>d.application_id===a.id);
+  el('main').innerHTML = `
+    <h3>Application: ${a.tracking_code}</h3>
+    <p><b>Service:</b> ${escapeHtml(sv.title)}</p>
+    <p><b>Applicant:</b> ${escapeHtml(u.fullname)} (${escapeHtml(u.email)})</p>
+    <p><b>Details:</b><br>${escapeHtml(a.details).replaceAll('\\n','<br>')}</p>
+    <h4>Documents</h4>
+    ${ docs.length ? docs.map(d=>`<div><a href="#" onclick="openDocument(${d.id});return false;">${escapeHtml(d.filename)}</a></div>`).join('') : '<div class="small">No documents</div>'}
+    <h4>Update Status</h4>
+    <form id="admin_update">
+      <label>Status</label>
+      <select name="status">
+        <option ${a.status==='Submitted'?'selected':''}>Submitted</option>
+        <option ${a.status==='Under Review'?'selected':''}>Under Review</option>
+        <option ${a.status==='Approved'?'selected':''}>Approved</option>
+        <option ${a.status==='Rejected'?'selected':''}>Rejected</option>
+      </select>
+      <label>Comment</label>
+      <textarea name="comment">${escapeHtml(a.admin_comment||'')}</textarea>
+      <div style="margin-top:10px"><button class="btn">Save</button> <button class="btn" style="background:#6b7280" onclick="showAdmin();return false;">Back</button></div>
+    </form>
+  `;
+  document.getElementById('admin_update').onsubmit = function(ev){
+    ev.preventDefault();
+    const fm = new FormData(ev.target); const status = fm.get('status'); const comment = fm.get('comment');
+    const st2 = getState();
+    const appIdx = st2.applications.findIndex(x=>x.id===a.id);
+    st2.applications[appIdx].status = status;
+    st2.applications[appIdx].admin_comment = comment;
+    st2.applications[appIdx].updated_at = now();
+    st2.notifications.push({ id: (st2.notifications.reduce((m,n)=>Math.max(m,n.id||0),0)+1), user_id: a.user_id, message: `Your application ${a.tracking_code} status changed to ${status}`, is_read:0, created_at: now() });
+    saveState(st2);
+    showAdmin();
+  };
+}
+
+// open document (data URL) in new tab
+function openDocument(docId){
+  const st = getState();
+  const d = st.documents.find(x=>x.id===docId);
+  if(!d) return alert('Document not found');
+  const w = window.open(); w.document.title = d.filename;
+  if(d.data.startsWith('data:application')) {
+    w.document.body.innerHTML = `<iframe src="${d.data}" style="width:100%;height:100vh;border:0"></iframe>`;
+  } else {
+    w.document.body.innerHTML = `<img src="${d.data}" style="max-width:100%">`;
+  }
+}
+
+/* -------------------------
+Helpers & small utils
+------------------------- */
+
+function statusClass(s){
+  if(s==='Under Review') return 'under';
+  if(s==='Approved') return 'approved';
+  if(s==='Rejected') return 'rejected';
+  return 'pending';
+}
+
+function escapeHtml(str){
+  if(!str) return '';
+  return String(str).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+}
+
+function tagEl(tag,txt,fn,cN){
+  const el = document.createElement(tag); el.textContent = txt;
+  if(fn) el.onclick = fn; if(cN) el.className = cN;
+  return el;
+}
+
+function toDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* expose some functions for inline onclicks */
+window.showHome = showHome;
+window.showRegister = showRegister;
+window.showLogin = showLogin;
+window.showApply = showApply;
+window.showTrack = showTrack;
+window.showDashboard = showDashboard;
+window.showAdminLogin = showAdminLogin;
+window.showAdmin = showAdmin;
+window.viewApplication = viewApplication;
+window.openDocument = openDocument;
+
+/* quick demo: if no users exist, seed created above; ensure admin exists with specified password */
+(function ensureAdmin(){
+  const st = getState();
+  if(!st.users.some(u=>u.role==='admin')) {
+    st.users.push({ id:1, fullname:'Administrator', email:'admin@egov.test', password:'Admin@123', role:'admin', created_at: now() });
+    saveState(st);
+  }
+})();
+
+</script>
+</body>
+</html>
